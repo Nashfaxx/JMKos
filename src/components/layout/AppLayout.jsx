@@ -17,17 +17,38 @@ const sourceCopy = {
   },
 }
 
+const stateCopy = {
+  checking: {
+    title: 'Memeriksa database',
+    description: 'Status koneksi sedang diperbarui.',
+  },
+  disconnected: {
+    title: 'Database terputus',
+    description: 'CRUD dikunci sampai koneksi pulih.',
+  },
+}
+
 export function AppLayout({
   activeTab,
   busy,
   children,
+  connectionStatus,
   error,
+  onLogout,
   onRefresh,
   onTabChange,
   source,
+  userEmail,
 }) {
   const activePage = tabs.find((tab) => tab.id === activeTab)
-  const connection = sourceCopy[source] || sourceCopy.disconnected
+  const connection =
+    connectionStatus?.state === 'connected'
+      ? sourceCopy[connectionStatus.source] || sourceCopy[source] || sourceCopy.disconnected
+      : stateCopy[connectionStatus?.state] || sourceCopy[source] || sourceCopy.disconnected
+  const connectionDescription =
+    connectionStatus?.state === 'connected'
+      ? `${connection.description}${connectionStatus.checkedAt ? ` Cek terakhir ${connectionStatus.checkedAt}.` : ''}`
+      : connectionStatus?.message || connection.description
 
   return (
     <main className="min-h-svh overflow-x-clip bg-[#f4f1e8] font-[var(--sans)] text-[#17231f]">
@@ -80,17 +101,32 @@ export function AppLayout({
             ))}
           </nav>
 
-          <div className="flex min-w-[210px] items-center gap-3 rounded-2xl bg-white/60 px-3 py-2 shadow-[inset_0_0_0_1px_rgba(23,35,31,0.08)] max-[900px]:min-w-0">
-            <span
-              className={cx(
-                'size-[9px] shrink-0 rounded-full bg-[#c59a55] shadow-[0_0_0_5px_rgba(197,154,85,0.14)]',
-                source !== 'disconnected' && 'bg-[#3e7f63] shadow-[0_0_0_5px_rgba(62,127,99,0.14)]',
-              )}
-            />
-            <div>
-              <strong className="block text-[13px] text-[#17231f]">{connection.title}</strong>
-              <p className="mt-0.5 text-xs text-[#69746c]">{connection.description}</p>
+          <div className="flex min-w-[270px] items-center gap-2 max-[900px]:min-w-0 max-[520px]:grid max-[520px]:grid-cols-1">
+            <div className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl bg-white/60 px-3 py-2 shadow-[inset_0_0_0_1px_rgba(23,35,31,0.08)]">
+              <span
+                className={cx(
+                  'size-[9px] shrink-0 rounded-full bg-[#c59a55] shadow-[0_0_0_5px_rgba(197,154,85,0.14)]',
+                  connectionStatus?.state === 'connected' &&
+                    'bg-[#3e7f63] shadow-[0_0_0_5px_rgba(62,127,99,0.14)]',
+                  connectionStatus?.state === 'checking' &&
+                    'animate-pulse bg-[#c59a55] shadow-[0_0_0_5px_rgba(197,154,85,0.14)]',
+                )}
+              />
+              <div className="min-w-0">
+                <strong className="block truncate text-[13px] text-[#17231f]">{connection.title}</strong>
+                <p className="mt-0.5 truncate text-xs text-[#69746c]" title={connectionDescription}>
+                  {connectionDescription}
+                </p>
+                {userEmail && <p className="mt-0.5 truncate text-[11px] text-[#8a928b]">{userEmail}</p>}
+              </div>
             </div>
+            <button
+              className="min-h-[42px] cursor-pointer rounded-2xl border-0 bg-[#17231f] px-4 text-sm font-bold text-[#fffaf0] transition-[transform,background] duration-200 hover:bg-[#243a32] active:scale-[0.98] focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#71d49b73]"
+              onClick={onLogout}
+              type="button"
+            >
+              Keluar
+            </button>
           </div>
         </div>
       </header>

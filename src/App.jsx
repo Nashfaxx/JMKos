@@ -1,4 +1,5 @@
 import { AppLayout } from './components/layout/AppLayout'
+import { LoginPage } from './components/auth/LoginPage'
 import { useKosAdmin } from './hooks/useKosAdmin'
 import { DashboardPage } from './pages/DashboardPage'
 import { PaymentsPage } from './pages/PaymentsPage'
@@ -8,6 +9,26 @@ import { TenantsPage } from './pages/TenantsPage'
 
 function App() {
   const admin = useKosAdmin()
+
+  if (!admin.authSession) {
+    return (
+      <LoginPage
+        authBusy={admin.authBusy}
+        authError={admin.authError}
+        authMode={admin.authMode}
+        authNotice={admin.authNotice}
+        email={admin.loginEmail}
+        hasConfig={admin.hasAuthConfig}
+        name={admin.loginName}
+        onEmailChange={admin.setLoginEmail}
+        onModeToggle={admin.toggleAuthMode}
+        onNameChange={admin.setLoginName}
+        onPasswordChange={admin.setLoginPassword}
+        onSubmit={admin.authMode === 'signup' ? admin.handleSignup : admin.handleLogin}
+        password={admin.loginPassword}
+      />
+    )
+  }
 
   if (admin.loading) {
     return (
@@ -28,10 +49,13 @@ function App() {
     <AppLayout
       activeTab={admin.activeTab}
       busy={admin.busy}
+      connectionStatus={admin.connectionStatus}
       error={admin.error}
+      onLogout={admin.handleLogout}
       onRefresh={admin.refresh}
       onTabChange={admin.setActiveTab}
       source={admin.source}
+      userEmail={admin.authSession.user?.email}
     >
       {admin.activeTab === 'dashboard' && (
         <DashboardPage

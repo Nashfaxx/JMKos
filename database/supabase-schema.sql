@@ -1,5 +1,5 @@
 -- Supabase/Postgres schema for JMKos.
--- Based on the provided MySQL dump, adjusted for Postgres syntax and browser-safe REST access.
+-- Run this file in the Supabase SQL Editor or apply it with SUPABASE_DB_URL.
 
 create table if not exists public.pemilik (
   id_pemilik varchar(10) primary key,
@@ -37,6 +37,64 @@ create table if not exists public.log_pembayaran (
   aksi varchar(20),
   waktu timestamptz default now()
 );
+
+create table if not exists public.akun (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text unique not null,
+  nama text,
+  role text not null default 'admin' check (role in ('admin', 'owner')),
+  dibuat_pada timestamptz not null default now(),
+  diperbarui_pada timestamptz not null default now()
+);
+
+create or replace function public.sync_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.diperbarui_pada = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists before_akun_update on public.akun;
+create trigger before_akun_update
+before update on public.akun
+for each row execute function public.sync_updated_at();
+
+create or replace function public.create_akun_for_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.akun (id, email, nama)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'nama', split_part(new.email, '@', 1))
+  )
+  on conflict (id) do update
+  set email = excluded.email,
+      nama = coalesce(public.akun.nama, excluded.nama);
+
+  return new;
+end;
+$$;
+
+drop trigger if exists after_auth_user_created on auth.users;
+create trigger after_auth_user_created
+after insert on auth.users
+for each row execute function public.create_akun_for_auth_user();
+
+insert into public.akun (id, email, nama)
+select id, email, coalesce(raw_user_meta_data ->> 'nama', split_part(email, '@', 1))
+from auth.users
+where email is not null
+on conflict (id) do update
+set email = excluded.email,
+    nama = coalesce(public.akun.nama, excluded.nama);
 
 create or replace function public.sync_kamar_status()
 returns trigger
@@ -113,31 +171,54 @@ alter table public.kamar enable row level security;
 alter table public.penyewa enable row level security;
 alter table public.pembayaran enable row level security;
 alter table public.log_pembayaran enable row level security;
+alter table public.akun enable row level security;
 
--- Development policy: authenticated users can manage all kos data.
--- For multi-owner production apps, replace this with owner/user_id scoped policies.
+drop policy if exists "authenticated read pemilik" on public.pemilik;
 create policy "authenticated read pemilik" on public.pemilik
   for select to authenticated using (true);
+
+drop policy if exists "authenticated manage pemilik" on public.pemilik;
 create policy "authenticated manage pemilik" on public.pemilik
   for all to authenticated using (true) with check (true);
 
+drop policy if exists "authenticated read kamar" on public.kamar;
 create policy "authenticated read kamar" on public.kamar
   for select to authenticated using (true);
+
+drop policy if exists "authenticated manage kamar" on public.kamar;
 create policy "authenticated manage kamar" on public.kamar
   for all to authenticated using (true) with check (true);
 
+drop policy if exists "authenticated read penyewa" on public.penyewa;
 create policy "authenticated read penyewa" on public.penyewa
   for select to authenticated using (true);
+
+drop policy if exists "authenticated manage penyewa" on public.penyewa;
 create policy "authenticated manage penyewa" on public.penyewa
   for all to authenticated using (true) with check (true);
 
+drop policy if exists "authenticated read pembayaran" on public.pembayaran;
 create policy "authenticated read pembayaran" on public.pembayaran
   for select to authenticated using (true);
+
+drop policy if exists "authenticated manage pembayaran" on public.pembayaran;
 create policy "authenticated manage pembayaran" on public.pembayaran
   for all to authenticated using (true) with check (true);
 
+drop policy if exists "authenticated read log_pembayaran" on public.log_pembayaran;
 create policy "authenticated read log_pembayaran" on public.log_pembayaran
   for select to authenticated using (true);
+
+drop policy if exists "authenticated read own akun" on public.akun;
+create policy "authenticated read own akun" on public.akun
+  for select to authenticated
+  using ((select auth.uid()) = id);
+
+drop policy if exists "authenticated update own akun" on public.akun;
+create policy "authenticated update own akun" on public.akun
+  for update to authenticated
+  using ((select auth.uid()) = id)
+  with check ((select auth.uid()) = id);
 
 insert into public.pemilik (id_pemilik, nama_pemilik, telepon) values
   ('PM001', 'Bu Siti', '081234567890'),

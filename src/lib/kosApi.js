@@ -1,3 +1,5 @@
+import { getAuthAccessToken, getStoredAuthSession } from './supabaseAuth'
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_KEY =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -47,6 +49,7 @@ async function backendRequest(options = {}) {
     method: options.method || 'GET',
     headers: { 'Content-Type': 'application/json' },
     body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: options.signal,
   })
 
   const payload = await response.json()
@@ -61,17 +64,19 @@ async function backendRequest(options = {}) {
 async function supabaseRequest(table, options = {}) {
   const params = new URLSearchParams(options.params || {})
   const url = `${SUPABASE_URL}/rest/v1/${table}${params.size ? `?${params.toString()}` : ''}`
+  const accessToken = await getAuthAccessToken()
 
   const response = await fetch(url, {
     method: options.method || 'GET',
     headers: {
       apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
+      Authorization: `Bearer ${accessToken || SUPABASE_KEY}`,
       'Content-Type': 'application/json',
       Prefer: 'return=representation',
       ...options.headers,
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
+    signal: options.signal,
   })
 
   if (!response.ok) {
@@ -125,6 +130,35 @@ async function deleteSupabase({ entity, key, id }) {
 }
 
 export const kosApi = {
+  async checkConnection(signal) {
+    if (isBackendReady()) {
+      await backendRequest({ signal })
+      return { healthy: true, source: 'vercel-api' }
+    }
+
+    if (isSupabaseReady()) {
+      if (!getStoredAuthSession()) {
+        return {
+          healthy: false,
+          source: 'disconnected',
+          message: 'Login Supabase dibutuhkan untuk mengakses database.',
+        }
+      }
+
+      await supabaseRequest('kamar', {
+        params: { select: 'id_kamar', limit: '1' },
+        signal,
+      })
+      return { healthy: true, source: 'supabase' }
+    }
+
+    return {
+      healthy: false,
+      source: 'disconnected',
+      message: 'Env Supabase belum ditemukan.',
+    }
+  },
+
   async listAll() {
     if (isBackendReady()) {
       return { data: syncRoomStatus(await backendRequest()), source: 'vercel-api' }
